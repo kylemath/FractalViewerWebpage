@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbulb Fractal Animation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #0c0c0c, #1a1a2e, #16213e);
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+        
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 14px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        
+        #controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            font-size: 12px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .control-group {
+            margin-bottom: 10px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        input[type="range"] {
+            width: 150px;
+        }
+        
+        button {
+            background: #4CAF50;
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 12px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        
+        button:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="info">
+            <h3>Mandelbulb Fractal</h3>
+            <p>A 3D extension of the Mandelbrot set</p>
+            <p>Use mouse to rotate, wheel to zoom</p>
+            <p>Power: <span id="powerDisplay">8</span></p>
+            <p>Iterations: <span id="iterDisplay">10</span></p>
+        </div>
+        
+        <div id="controls">
+            <div class="control-group">
+                <label for="power">Power (n):</label>
+                <input type="range" id="power" min="2" max="20" value="8" step="0.5">
+            </div>
+            <div class="control-group">
+                <label for="iterations">Max Iterations:</label>
+                <input type="range" id="iterations" min="5" max="30" value="10" step="1">
+            </div>
+            <div class="control-group">
+                <label for="bailout">Bailout Radius:</label>
+                <input type="range" id="bailout" min="1" max="10" value="2" step="0.1">
+            </div>
+            <div class="control-group">
+                <button id="animate">Toggle Animation</button>
+                <button id="reset">Reset View</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <script>
+        class MandelbulbRenderer {
+            constructor() {
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.controls = null;
+                this.mandelbulbMesh = null;
+                this.animationId = null;
+                this.isAnimating = true;
+                this.time = 0;
+                
+                // Fractal parameters
+                this.params = {
+                    power: 8.0,
+                    maxIterations: 10,
+                    bailoutRadius: 2.0,
+                    resolution: 64
+                };
+                
+                this.init();
+                this.createMandelbulb();
+                this.animate();
+                this.setupControls();
+            }
+            
+            init() {
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setClearColor(0x000000);
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                document.getElementById('container').appendChild(this.renderer.domElement);
+                
+                // Camera position
+                this.camera.position.set(4, 4, 4);
+                this.camera.lookAt(0, 0, 0);
+                
+                // Orbit controls
+                this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+                this.controls.enableDamping = true;
+                this.controls.dampingFactor = 0.05;
+                this.controls.autoRotate = true;
+                this.controls.autoRotateSpeed = 1.0;
+                
+                // Lighting
+                const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
+                this.scene.add(ambientLight);
+                
+                const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight1.position.set(5, 5, 5);
+                directionalLight1.castShadow = true;
+                this.scene.add(directionalLight1);
+                
+                const directionalLight2 = new THREE.DirectionalLight(0x4444ff, 0.4);
+                directionalLight2.position.set(-5, -5, -5);
+                this.scene.add(directionalLight2);
+                
+                const pointLight = new THREE.PointLight(0xff4444, 0.5, 10);
+                pointLight.position.set(2, 2, 2);
+                this.scene.add(pointLight);
+                
+                // Resize handler
+                window.addEventListener('resize', () => this.onWindowResize(), false);
+            }
+            
+            mandelbulbDistance(pos, power, maxIter, bailout) {
+                let x = pos.x, y = pos.y, z = pos.z;
+                let dr = 1.0;
+                let r = 0.0;
+                
+                for (let i = 0; i < maxIter; i++) {
+                    r = Math.sqrt(x*x + y*y + z*z);
+                    if (r > bailout) break;
+                    
+                    // Convert to polar coordinates
+                    const theta = Math.acos(z / r);
+                    const phi = Math.atan2(y, x);
+                    dr = Math.pow(r, power - 1.0) * power * dr + 1.0;
+                    
+                    // Scale and rotate the point
+                    const zr = Math.pow(r, power);
+                    const newTheta = theta * power;
+                    const newPhi = phi * power;
+                    
+                    // Convert back to cartesian coordinates
+                    x = zr * Math.sin(newTheta) * Math.cos(newPhi) + pos.x;
+                    y = zr * Math.sin(newTheta) * Math.sin(newPhi) + pos.y;
+                    z = zr * Math.cos(newTheta) + pos.z;
+                }
+                return 0.5 * Math.log(r) * r / dr;
+            }
+            
+            createMandelbulbGeometry() {
+                const vertices = [];
+                const indices = [];
+                const colors = [];
+                const normals = [];
+                
+                const res = this.params.resolution;
+                const scale = 2.0;
+                const step = scale * 2 / res;
+                
+                // Generate vertices using marching cubes approach (simplified)
+                for (let x = 0; x < res; x++) {
+                    for (let y = 0; y < res; y++) {
+                        for (let z = 0; z < res; z++) {
+                            const pos = new THREE.Vector3(
+                                (x / res - 0.5) * scale * 2,
+                                (y / res - 0.5) * scale * 2,
+                                (z / res - 0.5) * scale * 2
+                            );
+                            
+                            const distance = this.mandelbulbDistance(
+                                pos, 
+                                this.params.power, 
+                                this.params.maxIterations, 
+                                this.params.bailoutRadius
+                            );
+                            
+                            if (distance < 0.01) {
+                                vertices.push(pos.x, pos.y, pos.z);
+                                
+                                // Calculate normal (gradient)
+                                const eps = 0.01;
+                                const normalX = this.mandelbulbDistance(
+                                    new THREE.Vector3(pos.x + eps, pos.y, pos.z), 
+                                    this.params.power, this.params.maxIterations, this.params.bailoutRadius
+                                ) - this.mandelbulbDistance(
+                                    new THREE.Vector3(pos.x - eps, pos.y, pos.z), 
+                                    this.params.power, this.params.maxIterations, this.params.bailoutRadius
+                                );
+                                
+                                const normalY = this.mandelbulbDistance(
+                                    new THREE.Vector3(pos.x, pos.y + eps, pos.z), 
+                                    this.params.power, this.params.maxIterations, this.params.bailoutRadius
+                                ) - this.mandelbulbDistance(
+                                    new THREE.Vector3(pos.x, pos.y - eps, pos.z), 
+                                    this.params.power, this.params.maxIterations, this.params.bailoutRadius
+                                );
+                                
+                                const normalZ = this.mandelbulbDistance(
+                                    new THREE.Vector3(pos.x, pos.y, pos.z + eps), 
+                                    this.params.power, this.params.maxIterations, this.params.bailoutRadius
+                                ) - this.mandelbulbDistance(
+                                    new THREE.Vector3(pos.x, pos.y, pos.z - eps), 
+                                    this.params.power, this.params.maxIterations, this.params.bailoutRadius
+                                );
+                                
+                                const normal = new THREE.Vector3(normalX, normalY, normalZ).normalize();
+                                normals.push(normal.x, normal.y, normal.z);
+                                
+                                // Color based on position and distance
+                                const r = Math.abs(pos.x) / scale;
+                                const g = Math.abs(pos.y) / scale;
+                                const b = Math.abs(pos.z) / scale;
+                                colors.push(r * 0.8 + 0.2, g * 0.8 + 0.2, b * 0.8 + 0.2);
+                            }
+                        }
+                    }
+                }
+                
+                const geometry = new THREE.BufferGeometry();
+                geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+                geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                
+                return geometry;
+            }
+            
+            createMandelbulb() {
+                if (this.mandelbulbMesh) {
+                    this.scene.remove(this.mandelbulbMesh);
+                }
+                
+                const geometry = this.createMandelbulbGeometry();
+                
+                const material = new THREE.PointsMaterial({
+                    size: 0.05,
+                    vertexColors: true,
+                    transparent: true,
+                    opacity: 0.8,
+                    blending: THREE.AdditiveBlending
+                });
+                
+                this.mandelbulbMesh = new THREE.Points(geometry, material);
+                this.scene.add(this.mandelbulbMesh);
+            }
+            
+            setupControls() {
+                const powerSlider = document.getElementById('power');
+                const iterationsSlider = document.getElementById('iterations');
+                const bailoutSlider = document.getElementById('bailout');
+                const animateButton = document.getElementById('animate');
+                const resetButton = document.getElementById('reset');
+                
+                powerSlider.addEventListener('input', (e) => {
+                    this.params.power = parseFloat(e.target.value);
+                    document.getElementById('powerDisplay').textContent = this.params.power;
+                    this.createMandelbulb();
+                });
+                
+                iterationsSlider.addEventListener('input', (e) => {
+                    this.params.maxIterations = parseInt(e.target.value);
+                    document.getElementById('iterDisplay').textContent = this.params.maxIterations;
+                    this.createMandelbulb();
+                });
+                
+                bailoutSlider.addEventListener('input', (e) => {
+                    this.params.bailoutRadius = parseFloat(e.target.value);
+                    this.createMandelbulb();
+                });
+                
+                animateButton.addEventListener('click', () => {
+                    this.isAnimating = !this.isAnimating;
+                    this.controls.autoRotate = this.isAnimating;
+                    animateButton.textContent = this.isAnimating ? 'Pause Animation' : 'Start Animation';
+                });
+                
+                resetButton.addEventListener('click', () => {
+                    this.camera.position.set(4, 4, 4);
+                    this.camera.lookAt(0, 0, 0);
+                    this.controls.reset();
+                });
+            }
+            
+            animate() {
+                this.animationId = requestAnimationFrame(() => this.animate());
+                
+                this.time += 0.01;
+                
+                if (this.isAnimating) {
+                    // Animate the fractal parameters slightly
+                    const originalPower = parseFloat(document.getElementById('power').value);
+                    this.params.power = originalPower + Math.sin(this.time * 0.5) * 0.2;
+                    
+                    // Update the material properties for a pulsing effect
+                    if (this.mandelbulbMesh) {
+                        this.mandelbulbMesh.material.opacity = 0.6 + Math.sin(this.time * 2) * 0.2;
+                        this.mandelbulbMesh.rotation.y += 0.002;
+                    }
+                }
+                
+                this.controls.update();
+                this.renderer.render(this.scene, this.camera);
+            }
+            
+            onWindowResize() {
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+        }
+        
+        // Initialize the Mandelbulb renderer when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new MandelbulbRenderer();
+        });
+    </script>
+</body>
+</html>
