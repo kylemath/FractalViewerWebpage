@@ -1,0 +1,112 @@
+<html>
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Zoom and pan state
+        let zoom = 200;
+        let centerX = 0;
+        let centerY = 0;
+        let isDragging = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+
+        // Mandelbrot set fractal
+        function drawMandelbrot() {
+            const width = canvas.width;
+            const height = canvas.height;
+            const imageData = ctx.createImageData(width, height);
+            const data = imageData.data;
+
+            const maxIterations = 100;
+
+            for (let x = 0; x < width; x++) {
+                for (let y = 0; y < height; y++) {
+                    const zx = (x - width / 2) / zoom + centerX;
+                    const zy = (y - height / 2) / zoom + centerY;
+                    
+                    let cx = zx;
+                    let cy = zy;
+                    let iterations = 0;
+
+                    while (cx * cx + cy * cy < 4 && iterations < maxIterations) {
+                        const tmp = cx * cx - cy * cy + zx;
+                        cy = 2 * cx * cy + zy;
+                        cx = tmp;
+                        iterations++;
+                    }
+
+                    const pixelIndex = (y * width + x) * 4;
+                    const color = iterations === maxIterations ? 0 : (iterations * 255) / maxIterations;
+                    
+                    data[pixelIndex] = color;     // Red
+                    data[pixelIndex + 1] = color * 0.5; // Green
+                    data[pixelIndex + 2] = color * 0.8; // Blue
+                    data[pixelIndex + 3] = 255;   // Alpha
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        // Mouse wheel zoom
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9;
+            zoom *= zoomFactor;
+            
+            // Zoom towards mouse position
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            const worldX = (mouseX - canvas.width / 2) / zoom + centerX;
+            const worldY = (mouseY - canvas.height / 2) / zoom + centerY;
+            
+            zoom *= zoomFactor;
+            
+            centerX = worldX - (mouseX - canvas.width / 2) / zoom;
+            centerY = worldY - (mouseY - canvas.height / 2) / zoom;
+            
+            drawMandelbrot();
+        });
+
+        // Mouse drag panning
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - lastMouseX;
+                const deltaY = e.clientY - lastMouseY;
+                
+                centerX -= deltaX / zoom;
+                centerY -= deltaY / zoom;
+                
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+                
+                drawMandelbrot();
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+        });
+
+        // Initial draw
+        drawMandelbrot();
+    </script>
+</body>
+</html> 
