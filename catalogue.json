@@ -1,0 +1,11 @@
+{
+  "id": "FractalViewerWebpage",
+  "title": "FractalViewerWebpage",
+  "oneLiner": "View Fractals on the web",
+  "demoUrl": "https://kylemath.github.io/FractalViewerWebpage/",
+  "screenshot": "https://raw.githubusercontent.com/kylemath/FractalViewerWebpage/main/screenshot.png",
+  "kind": "project",
+  "categories": [],
+  "tags": [],
+  "status": "published"
+}
